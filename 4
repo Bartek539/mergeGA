@@ -1,0 +1,95 @@
+Sub MergeFilesLikeHuman()
+    Dim wsMain As Worksheet
+    Dim folderPath As String
+    Dim fileName As String
+    Dim wbMaster As Workbook
+    Dim wbSource As Workbook
+    Dim ws As Worksheet
+    Dim wsSource As Worksheet
+    Dim wsTarget As Worksheet
+    Dim isFirstFile As Boolean
+    Dim targetRow As Long
+    
+    ' Ustawienia początkowe
+    Set wbMaster = ThisWorkbook
+    Set wsMain = wbMaster.Sheets("Sheet1")
+    folderPath = wsMain.Range("B2").Value
+    
+    ' Upewnienie się, że ścieżka kończy się znakiem "\"
+    If Right(folderPath, 1) <> "\" Then
+        folderPath = folderPath & "\"
+    End If
+    
+    ' Pobranie pierwszego pliku
+    fileName = Dir(folderPath & "*.xls*")
+    isFirstFile = True
+    
+    ' Wyłączenie odświeżania ekranu dla szybkości działania
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+    
+    Do While fileName <> ""
+        ' Pominięcie pliku z makrem (jeśli jest w tym samym folderze)
+        If fileName <> wbMaster.Name Then
+            Set wbSource = Workbooks.Open(folderPath & fileName)
+            Set wsSource = Nothing
+            
+            ' Znajdź PIERWSZY arkusz zawierający w nazwie "*Summary_All_*"
+            For Each ws In wbSource.Worksheets
+                If ws.Name Like "*Summary_All_*" Then
+                    Set wsSource = ws
+                    Exit For ' Pobieramy tylko pierwszy pasujący
+                End If
+            Next ws
+            
+            ' Jeśli znaleziono pasujący arkusz w pliku źródłowym
+            If Not wsSource Is Nothing Then
+                ' Zdjęcie FreezePanes i Split przed kopiowaniem
+                wsSource.Activate
+                With ActiveWindow
+                    .FreezePanes = False
+                    .Split = False
+                End With
+                
+                If isFirstFile Then
+                    ' PIERWSZY PLIK: Kopiujemy cały arkusz na koniec pliku głównego
+                    wsSource.Copy After:=wbMaster.Sheets(wbMaster.Sheets.Count)
+                    Set wsTarget = wbMaster.Sheets(wbMaster.Sheets.Count)
+                    isFirstFile = False
+                Else
+                    ' KOLEJNE PLIKI: Wklejamy dane do utworzonego arkusza docelowego
+                    If Not wsTarget Is Nothing Then
+                        ' Szukanie pierwszej wolnej komórki w kolumnie F
+                        If wsTarget.Cells(wsTarget.Rows.Count, "F").End(xlUp).Row = 1 And IsEmpty(wsTarget.Cells(1, "F")) Then
+                            targetRow = 1
+                        Else
+                            targetRow = wsTarget.Cells(wsTarget.Rows.Count, "F").End(xlUp).Row + 1
+                        End If
+                        
+                        ' Wklejanie zakresu od pierwszej wolnej komórki w kolumnie F (kolumna 6)
+                        If Application.WorksheetFunction.CountA(wsSource.UsedRange) > 0 Then
+                            wsSource.UsedRange.Copy Destination:=wsTarget.Cells(targetRow, 6)
+                        End If
+                    End If
+                End If
+            End If
+            
+            ' Zamknięcie pliku źródłowego bez zapisywania
+            wbSource.Close SaveChanges:=False
+        End If
+        
+        ' Przejście do kolejnego pliku
+        fileName = Dir()
+    Loop
+    
+    ' Przywrócenie widoku arkusza głównego
+    wsMain.Activate
+    
+    ' Przywrócenie ustawień aplikacji
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+    
+    MsgBox "Scalanie plików zakończone sukcesem!", vbInformation, "Koniec pracy"
+End Sub
