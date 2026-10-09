@@ -1,0 +1,90 @@
+Sub MergeFilesLikeHuman()
+    Dim wsMain As Worksheet
+    Dim folderPath As String
+    Dim fileName As String
+    Dim wbMaster As Workbook
+    Dim wbSource As Workbook
+    Dim i As Integer
+    Dim isFirstFile As Boolean
+    Dim startSheetCount As Integer
+    Dim targetRow As Long
+    Dim wsSource As Worksheet
+    Dim wsTarget As Worksheet
+    Dim lastRowSource As Long
+    
+    ' Ustawienia początkowe
+    Set wbMaster = ThisWorkbook
+    Set wsMain = wbMaster.Sheets("Sheet1")
+    folderPath = wsMain.Range("B2").Value
+    
+    ' Upewnienie się, że ścieżka kończy się znakiem "\"
+    If Right(folderPath, 1) <> "\" Then
+        folderPath = folderPath & "\"
+    End If
+    
+    ' Pobranie pierwszego pliku
+    fileName = Dir(folderPath & "*.xls*")
+    isFirstFile = True
+    startSheetCount = wbMaster.Sheets.Count
+    
+    ' Wyłączenie odświeżania ekranu dla szybkości działania
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    Application.Calculation = xlCalculationManual
+    
+    Do While fileName <> ""
+        ' Pominięcie pliku z makrem (jeśli jest w tym samym folderze)
+        If fileName <> wbMaster.Name Then
+            Set wbSource = Workbooks.Open(folderPath & fileName)
+            
+            If isFirstFile Then
+                ' PIERWSZY PLIK: Kopiujemy całe arkusze jeden do jednego na koniec tego pliku
+                For i = 1 To wbSource.Sheets.Count
+                    wbSource.Sheets(i).Copy After:=wbMaster.Sheets(wbMaster.Sheets.Count)
+                Next i
+                isFirstFile = False
+            Else
+                ' KOLEJNE PLIKI: Kopiujemy zawartość do już utworzonych arkuszy
+                ' Pętla idzie po liczbie arkuszy w pliku źródłowym
+                For i = 1 To wbSource.Sheets.Count
+                    Set wsSource = wbSource.Sheets(i)
+                    
+                    ' Zabezpieczenie przed błędem, gdyby kolejny plik miał więcej arkuszy niż pierwszy
+                    If (startSheetCount + i) <= wbMaster.Sheets.Count Then
+                        Set wsTarget = wbMaster.Sheets(startSheetCount + i)
+                        
+                        ' Szukanie ostatniego używanego wiersza w arkuszu docelowym
+                        On Error Resume Next
+                        targetRow = wsTarget.Cells.Find(What:="*", _
+                                    After:=wsTarget.Cells(1), _
+                                    LookAt:=xlPart, _
+                                    LookIn:=xlFormulas, _
+                                    SearchOrder:=xlByRows, _
+                                    SearchDirection:=xlPrevious).Row + 1
+                        On Error GoTo 0
+                        
+                        ' Jeśli arkusz docelowy jest pusty
+                        If targetRow = 0 Then targetRow = 1
+                        
+                        ' Klasyczne "Control C - Control V" całego używanego zakresu
+                        If Application.WorksheetFunction.CountA(wsSource.UsedRange) > 0 Then
+                            wsSource.UsedRange.Copy Destination:=wsTarget.Cells(targetRow, 1)
+                        End If
+                    End If
+                Next i
+            End If
+            
+            ' Zamknięcie pliku źródłowego bez zapisywania
+            wbSource.Close SaveChanges:=False
+        End If
+        ' Przejście do kolejnego pliku
+        fileName = Dir()
+    Loop
+    
+    ' Przywrócenie ustawień aplikacji
+    Application.ScreenUpdating = True
+    Application.DisplayAlerts = True
+    Application.Calculation = xlCalculationAutomatic
+    
+    MsgBox "Scalanie plików zakończone sukcesem!", vbInformation, "Koniec pracy"
+End Sub
